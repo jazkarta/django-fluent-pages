@@ -8,11 +8,14 @@ import sys
 
 
 # When creating the sdist, make sure the django.mo file also exists:
-if 'sdist' in sys.argv:
+if 'sdist' in sys.argv or 'develop' in sys.argv:
     try:
         os.chdir('fluent_pages')
-        from django.core.management.commands.compilemessages import compile_messages
-        compile_messages(sys.stderr)
+        try:
+            from django.core.management.commands.compilemessages import compile_messages
+            compile_messages(sys.stderr)
+        except ImportError:
+            pass
     finally:
         os.chdir('..')
 
@@ -36,17 +39,22 @@ setup(
     license='Apache License, Version 2.0',
 
     install_requires=[
-        'django-mptt>=0.5.4',
-        'django-polymorphic-tree>=0.8.6',
-        'django-tag-parser>=1.0.0',
+        'django-fluent-utils>=1.1',        # DRY utility code
+        'django-mptt>=0.5.5',              # Still supporting Django 1.4, use mptt 0.6 for Python 3 support.
+        'django-parler>=1.2.1',            # Needed for multi-table translation support
+        'django-polymorphic>=0.6',         # Needed for Django 1.7 compatibility
+        'django-polymorphic-tree>=1.0.1',  # Enforce Python 3 compatible versions
+        'django-tag-parser>=2.0',
+        'future>=0.12.2',
+        'six>=1.5.2',
     ],
     requires=[
-        'Django (>=1.3)',   # Using staticfiles
+        'Django (>=1.4)',
     ],
     extras_require={
-        'flatpage': ['django-wysiwyg>=0.5.1'],
-        'fluentpage': ['django-fluent-contents>=0.8.4'],
-        'redirectnode': ['django-any-urlfield>=1.0.1'],
+        'flatpage': ['django-wysiwyg>=0.7.0'],
+        'fluentpage': ['django-fluent-contents>=1.0c2'],
+        'redirectnode': ['django-any-urlfield>=2.0.2'],  # Needs Pickle support for translated new_url field.
     },
     description='A flexible, scalable CMS with custom node types, and flexible block content.',
     long_description=read('README.rst'),
@@ -73,6 +81,7 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.3',
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
         'Topic :: Software Development :: Libraries :: Application Frameworks',

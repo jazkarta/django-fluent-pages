@@ -6,7 +6,11 @@ Load this module using:
 
     {% load fluent_pages_tags %}
 """
+from future.builtins import str
+from six import integer_types, string_types
+from six import iteritems
 from django.contrib.sites.models import Site
+from django.utils.functional import SimpleLazyObject
 from django.template import Library, TemplateSyntaxError
 
 from tag_parser import template_tag
@@ -15,6 +19,8 @@ from tag_parser.basetags import BaseInclusionNode, BaseNode
 from fluent_pages.appsettings import AUTHZ_BACKEND as backend
 from fluent_pages.models import UrlNode
 from fluent_pages.models.navigation import PageNavigationNode
+from fluent_pages.models.utils import prefill_parent_site
+
 
 register = Library()
 
@@ -37,15 +43,25 @@ class BreadcrumbNode(BaseInclusionNode):
 
     def get_context_data(self, parent_context, *tag_args, **tag_kwargs):
         request = _get_request(parent_context)
-        page  = _get_current_page(parent_context)  # UrlNode
-        items = page.breadcrumb # list(UrlNode)
+        try:
+            page  = _get_current_page(parent_context)  # UrlNode
+        except UrlNode.DoesNotExist:
+            # Typically happens when {% render_breadcrumb %} is used on 404 pages,
+            # there is no breadcrumb possible there.
+            # NOTE: if desired, we could add an option to use UrlNode.objects.best_match_for_path() here.
+            items = []
+            page = None
+            site = None
+        else:
+            items = page.breadcrumb # list(UrlNode)
+            site = SimpleLazyObject(lambda: page.parent_site),  # Only read if really used, then cache.
 
         return {
             'parent': parent_context,
             'request': request,
             'breadcrumb': items,
             'page': page,
-            'site': page.parent_site,
+            'site': site,
         }
 
 
@@ -55,7 +71,7 @@ def get_node_kwargs(tag_kwargs):
     """
     return dict(
         (k, v)
-        for k, v in tag_kwargs.iteritems()
+        for k, v in iteritems(tag_kwargs)
         if k in ('max_depth',)
     )
 
@@ -86,21 +102,18 @@ class MenuNode(BaseInclusionNode):
             # if we've been provided a parent kwarg then we want to filter
             parent_value = tag_kwargs['parent']
 
-            if isinstance(parent_value, basestring):
-                # if we've been provided a string then we lookup based on the
-                # path/url
+            if isinstance(parent_value, string_types):
+                # if we've been provided a string then we lookup based on the path/url
                 try:
                     parent = UrlNode.objects.filter(
                         pk__in=backend.pages_for_user(user)).get_for_path(
                             parent_value)
                 except UrlNode.DoesNotExist:
                     return {'menu_items': []}
-                # Can't do parent___cached_key due to polymorphic queryset code.
-                top_pages = parent.children.in_navigation().filter(
-                    pk__in=backend.pages_for_user(user))
-            elif isinstance(parent_value, (int, long)):
-                # If we've been provided an int then we lookup based on the id
-                # of the page
+                top_pages = parent.children.in_navigation.filter(
+                    pk__in=backend.pages_for_user(user))  # Can't do parent___cached_key due to polymorphic queryset code.
+            elif isinstance(parent_value, integer_types):
+                # If we've been provided an int then we lookup based on the id of the page
                 top_pages = UrlNode.objects.in_navigation().filter(
                     pk__in=backend.pages_for_user(user), parent_id=parent_value)
             elif isinstance(parent_value, UrlNode):
@@ -158,9 +171,9 @@ class GetVarsNode(BaseNode):
         # Automatically add 'site', allows "default:site.domain" to work.
         # ...and optionally - if a page exists - include 'page' too.
         extra_context = {}
-        if not context.has_key('site'):
+        if 'site' not in context:
             extra_context['site'] = current_site
-        if current_page and not context.has_key('page'):
+        if current_page and 'page' not in context:
             extra_context['page'] = current_page
 
         if extra_context:
@@ -188,15 +201,16 @@ def _get_current_page(context):
             try:
                 # Then try looking up environmental properties.
                 current_page = UrlNode.objects.get_for_path(request.path)
-            except UrlNode.DoesNotExist, e:
+            except UrlNode.DoesNotExist as e:
                 # Be descriptive. This saves precious developer time.
                 raise UrlNode.DoesNotExist("Could not detect current page.\n"
-                                           "- " + unicode(e) + "\n"
+                                           "- " + str(e) + "\n"
                                            "- No context variable named 'page' found.")
 
         if not isinstance(current_page, UrlNode):
             raise UrlNode.DoesNotExist("The 'page' context variable is not a valid page")
 
+        prefill_parent_site(current_page)
         request._current_fluent_page = current_page
 
     return request._current_fluent_page  # is a UrlNode
@@ -208,6 +222,5 @@ def _get_request(context):
     This enforces the use of the template :class:`~django.template.RequestContext`,
     and provides meaningful errors if this is omitted.
     """
-    assert context.has_key('request'), "The fluent_pages_tags library requires a 'request' object in the context! Is RequestContext not used, or 'django.core.context_processors.request' not included in TEMPLATE_CONTEXT_PROCESSORS?"
+    assert 'request' in context, "The fluent_pages_tags library requires a 'request' object in the context! Is RequestContext not used, or 'django.core.context_processors.request' not included in TEMPLATE_CONTEXT_PROCESSORS?"
     return context['request']
-

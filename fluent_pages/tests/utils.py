@@ -1,14 +1,15 @@
+from future.builtins import str
+from six import iteritems
 from functools import wraps
 from django.conf import settings, UserSettingsHolder
 from django.core.management import call_command
 from django.core.urlresolvers import get_script_prefix, set_script_prefix
 from django.contrib.sites.models import Site
 from django.db.models import loading
-from django.template.loaders import app_directories
 from django.test import TestCase
 from django.utils.importlib import import_module
 from fluent_pages.models.db import UrlNode
-from fluent_pages.utils.compat import get_user_model
+from fluent_utils.django_compat import get_user_model
 import os
 
 
@@ -24,6 +25,8 @@ class AppTestCase(TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # Avoid early import, triggers AppCache
+        from django.template.loaders import app_directories
         User = get_user_model()
 
         if cls.install_apps:
@@ -31,8 +34,8 @@ class AppTestCase(TestCase):
             run_syncdb = False
             for appname in cls.install_apps:
                 if appname not in settings.INSTALLED_APPS:
-                    print 'Adding {0} to INSTALLED_APPS'.format(appname)
-                    settings.INSTALLED_APPS += (appname,)
+                    print('Adding {0} to INSTALLED_APPS'.format(appname))
+                    settings.INSTALLED_APPS = (appname,) + tuple(settings.INSTALLED_APPS)
                     run_syncdb = True
 
                     # Flush caches
@@ -70,7 +73,7 @@ class AppTestCase(TestCase):
         """
         if msg_prefix:
             msg_prefix += ": "
-        self.assertEquals(self.client.get(url).status_code, 200, unicode(msg_prefix) + u"Page at {0} should be found.".format(url))
+        self.assertEqual(self.client.get(url).status_code, 200, str(msg_prefix) + u"Page at {0} should be found.".format(url))
 
 
     def assert404(self, url, msg_prefix=''):
@@ -79,7 +82,8 @@ class AppTestCase(TestCase):
         """
         if msg_prefix:
             msg_prefix += ": "
-        self.assertEquals(self.client.get(url).status_code, 404, unicode(msg_prefix) + u"Page at {0} should return 404.".format(url))
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404, str(msg_prefix) + u"Page at {0} should return 404, got {1}.".format(url, response.status_code))
 
 
 try:
@@ -125,7 +129,7 @@ except ImportError:
 
         def enable(self):
             override = UserSettingsHolder(settings._wrapped)
-            for key, new_value in self.options.items():
+            for key, new_value in iteritems(self.options):
                 setattr(override, key, new_value)
             settings._wrapped = override
 

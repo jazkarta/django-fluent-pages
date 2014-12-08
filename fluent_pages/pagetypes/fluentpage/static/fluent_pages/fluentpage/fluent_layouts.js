@@ -3,7 +3,7 @@
  * When a new layout is fetched, it is passed to the fluent_contents module to rebuild the tabs.
  */
 var fluent_layouts = {
-    'ct_id': null,
+    'ct_id': null
 };
 
 (function($)
@@ -23,6 +23,8 @@ var fluent_layouts = {
   function onReady()
   {
     var layout_selector = $("#id_layout");
+    if(layout_selector.length == 0)   // readonly field.
+      return;
     fluent_layouts._select_single_option( layout_selector );
     layout_selector.change( fluent_layouts.onLayoutChange );
     fluent_contents.layout.onInitialize( fluent_layouts.fetch_layout_on_refresh );
@@ -91,9 +93,16 @@ var fluent_layouts = {
 
   fluent_layouts.fetch_layout = function(layout_id)
   {
+    // Get the ct_id from the template.
+    var ct_id = parseInt(fluent_layouts.ct_id);
+    if(isNaN(ct_id)) {
+        alert("Internal CMS error: missing `fluent_layouts.ct_id` variable in the template!");
+        return;
+    }
+
     // Get layout info.
     $.ajax({
-      url: ajax_root + "get_layout/" + parseInt(layout_id) + "/?ct_id=" + parseInt(fluent_layouts.ct_id),
+      url: ajax_root + "get_layout/" + parseInt(layout_id) + "/?ct_id=" + ct_id,
       success: function(layout, textStatus, xhr)
       {
         // Ask to update the tabs!

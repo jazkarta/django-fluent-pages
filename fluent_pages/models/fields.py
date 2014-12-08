@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models.fields.related import ReverseSingleRelatedObjectDescriptor
 from django.utils.translation import ugettext_lazy as _
 from polymorphic_tree.models import PolymorphicTreeForeignKey
 from fluent_pages import forms
@@ -19,6 +20,34 @@ class TemplateFilePathField(models.FilePathField):
         defaults.update(kwargs)
         return super(TemplateFilePathField, self).formfield(**defaults)
 
+    def south_field_triple(self):
+        """
+        Returns a suitable description of this field for South.
+        """
+        from south.modelsinspector import introspector
+        field_class = "{0}.{1}".format(self.__class__.__module__, self.__class__.__name__)
+        args, kwargs = introspector(self)
+        del kwargs['path']
+        return (field_class, args, kwargs)
+
+    def deconstruct(self):
+        # For Django 1.7 migrations
+        name, path, args, kwargs = super(TemplateFilePathField, self).deconstruct()
+        if 'path' in kwargs:
+            del kwargs["path"]
+        return name, path, args, kwargs
+
+
+
+class TranslatedForeignKeyDescriptor(ReverseSingleRelatedObjectDescriptor):
+    def __get__(self, instance, instance_type=None):
+        # let the .parent return an object in the same language as our selves.
+        # note: when the object is switched to a different language, this updates the shared/cached parent.
+        obj = super(TranslatedForeignKeyDescriptor, self).__get__(instance, instance_type)
+        if instance is not None and obj is not None:
+            obj.set_current_language(instance.get_current_language())
+        return obj
+
 
 class PageTreeForeignKey(PolymorphicTreeForeignKey):
     """
@@ -27,6 +56,10 @@ class PageTreeForeignKey(PolymorphicTreeForeignKey):
     default_error_messages = {
         'no_children_allowed': _("The selected page cannot have sub pages."),
     }
+
+    def contribute_to_class(self, cls, name):
+        super(PageTreeForeignKey, self).contribute_to_class(cls, name)
+        setattr(cls, self.name, TranslatedForeignKeyDescriptor(self))  # override what ForeignKey does.
 
 
 try:

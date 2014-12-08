@@ -1,5 +1,7 @@
 import django
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.utils.encoding import force_text
 from fluent_pages.models import Page
 from fluent_pages.models.fields import PageTreeForeignKey
 from fluent_pages.models.managers import UrlNodeQuerySet
@@ -13,6 +15,12 @@ class ModelDataTests(AppTestCase):
     """
     root_url = '/'
     subpage1_url = '/test_subpage1/'
+
+
+    def setUp(self):
+        # Need to make sure that django-parler's cache isn't reused,
+        # because the transaction is rolled back on each test method.
+        cache.clear()
 
 
     @classmethod
@@ -85,7 +93,7 @@ class ModelDataTests(AppTestCase):
         self.assertIsInstance(shop, WebShopPage)
 
         # Same for lists
-        pages = list(Page.objects.published().filter(slug__in=('level1', 'shop')).order_by('slug'))
+        pages = list(Page.objects.published().filter(translations__slug__in=('level1', 'shop')).order_by('translations__slug'))
         self.assertIsInstance(pages[0], SimpleTextPage)
         self.assertIsInstance(pages[1], WebShopPage)
 
@@ -99,26 +107,44 @@ class ModelDataTests(AppTestCase):
         self.assertEqual(Page.objects.get_for_path('/').children.in_navigation()[0].slug, 'level1')
 
 
+    def test_get_pages_of_type_qs(self):
+        """
+        Test the core of the app_reverse() code.
+        """
+        pages1 = Page.objects.published().non_polymorphic().instance_of(WebShopPage)
+
+        # This somehow breaks for django-mptt 0.6 for Django 1.4
+        # This is caused in django-mptt during the Python 3 port, which could be bisected to
+        # the commits 497e780a4aab7ddc38731e8d48ea62c45d09b228..34fce3eeaafcf666ab15d5adae9900e7daea4212
+        pages2 = pages1.only(
+            'parent', 'lft',  # add fields read by MPTT, otherwise .only() causes infinite loop in django-mptt 0.5.2
+            'id'              # for Django 1.3
+        )
+
+        self.assertEqual(len(pages1), 1)
+        self.assertEqual(len(pages2), 1)
+
+
     def test_move_root(self):
         """
         Moving the root node should update all child node URLs. (they are precalculated/cached in the DB)
         """
         # Get start situation
-        root = SimpleTextPage.objects.get(override_url='/')
-        level1 = SimpleTextPage.objects.get(slug='level1')
-        level2 = SimpleTextPage.objects.get(slug='level2')
-        self.assertEquals(level1.get_absolute_url(), '/level1/')
-        self.assertEquals(level2.get_absolute_url(), '/level1/level2/')
+        root = SimpleTextPage.objects.get(translations__override_url='/')
+        level1 = SimpleTextPage.objects.get(translations__slug='level1')
+        level2 = SimpleTextPage.objects.get(translations__slug='level2')
+        self.assertEqual(level1.get_absolute_url(), '/level1/')
+        self.assertEqual(level2.get_absolute_url(), '/level1/level2/')
 
         # Change root
         root.override_url = '/new_root/'
         root.save()
 
         # Check result
-        level1 = SimpleTextPage.objects.get(slug='level1')
-        level2 = SimpleTextPage.objects.get(slug='level2')
-        self.assertEquals(level1.get_absolute_url(), '/new_root/level1/')
-        self.assertEquals(level2.get_absolute_url(), '/new_root/level1/level2/')
+        level1 = SimpleTextPage.objects.get(translations__slug='level1')
+        level2 = SimpleTextPage.objects.get(translations__slug='level2')
+        self.assertEqual(level1.get_absolute_url(), '/new_root/level1/')
+        self.assertEqual(level2.get_absolute_url(), '/new_root/level1/level2/')
 
         # TODO: note that things like .filter().update() won't work on override_url and slug properties.
 
@@ -127,29 +153,29 @@ class ModelDataTests(AppTestCase):
         """
         Renaming a slug should affect the nodes below.
         """
-        level1 = SimpleTextPage.objects.get(slug='level1')
+        level1 = SimpleTextPage.objects.get(translations__slug='level1')
         level1.slug = 'level1_b'
         level1.save()
 
         level1 = SimpleTextPage.objects.get(pk=level1.pk)
-        level2 = SimpleTextPage.objects.get(slug='level2')
-        self.assertEquals(level1.get_absolute_url(), '/level1_b/')
-        self.assertEquals(level2.get_absolute_url(), '/level1_b/level2/')
+        level2 = SimpleTextPage.objects.get(translations__slug='level2')
+        self.assertEqual(level1.get_absolute_url(), '/level1_b/')
+        self.assertEqual(level2.get_absolute_url(), '/level1_b/level2/')
 
 
     def test_change_parent(self):
         """
         Moving a tree to a new parent should update their URLs
         """
-        root2 = SimpleTextPage.objects.get(slug='root2')
-        level1 = SimpleTextPage.objects.get(slug='level1')
+        root2 = SimpleTextPage.objects.get(translations__slug='root2')
+        level1 = SimpleTextPage.objects.get(translations__slug='level1')
         level1.parent = root2
         level1.save()
 
         level1 = SimpleTextPage.objects.get(pk=level1.pk)
-        level2 = SimpleTextPage.objects.get(slug='level2')
-        self.assertEquals(level1.get_absolute_url(), '/root2/level1/')
-        self.assertEquals(level2.get_absolute_url(), '/root2/level1/level2/')
+        level2 = SimpleTextPage.objects.get(translations__slug='level2')
+        self.assertEqual(level1.get_absolute_url(), '/root2/level1/')
+        self.assertEqual(level2.get_absolute_url(), '/root2/level1/level2/')
 
 
     def test_duplicate_slug(self):
@@ -202,6 +228,14 @@ class ModelDataTests(AppTestCase):
 
         # Note that .save() doesn't validate, as per default Django behavior.
         if django.VERSION >= (1, 4):
-            self.assertRaisesMessage(ValidationError, PageTreeForeignKey.default_error_messages['no_children_allowed'], lambda: text_file2.full_clean())
+            self.assertRaisesMessage(ValidationError, force_text(PageTreeForeignKey.default_error_messages['no_children_allowed']), lambda: text_file2.full_clean())
         else:
             self.assertRaises(ValidationError, lambda: text_file2.full_clean())
+
+
+    def test_empty_translation_check(self):
+        """
+        Make sure empty translations will never be saved.
+        """
+        from fluent_pages.models import UrlNode_Translation
+        self.assertRaises(RuntimeError, lambda: UrlNode_Translation.objects.create())

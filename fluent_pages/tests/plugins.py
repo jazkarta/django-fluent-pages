@@ -19,7 +19,7 @@ class PluginTests(AppTestCase):
         """
         from fluent_pages.tests.testapp.page_type_plugins import WebShopPagePlugin
         from fluent_pages.tests.testapp.urls_webshop import webshop_index
-        self.assertEquals(WebShopPagePlugin.urls, 'fluent_pages.tests.testapp.urls_webshop')
+        self.assertEqual(WebShopPagePlugin.urls, 'fluent_pages.tests.testapp.urls_webshop')
 
         # See if the page points to the proper URL resolver
         shop = WebShopPage.objects.all()[0]
@@ -38,6 +38,8 @@ class PluginTests(AppTestCase):
         """
         The app_reverse function should find the proper CMS page where the app is mounted.
         """
+        self.assertEqual(WebShopPage.objects.published().count(), 1)
+
         self.assertEqual(app_reverse('webshop_index'), '/shop/')
         self.assertEqual(app_reverse('webshop_article', kwargs={'slug': 'foobar'}), '/shop/foobar/')
 
@@ -50,6 +52,7 @@ class PluginTests(AppTestCase):
         The app_reverse functions should support multiple mount points for an app.
         """
         shop2 = WebShopPage.objects.create(title="Shop2", slug="shop2", status=WebShopPage.PUBLISHED, author=self.user)
+        self.assertEqual(WebShopPage.objects.published().count(), 2)
 
         # There are now 2 mount points, the functions should detect that
         self.assertRaises(MultipleReverseMatch, lambda: app_reverse('webshop_index'))
@@ -70,6 +73,7 @@ class PluginTests(AppTestCase):
         """
         for page in WebShopPage.objects.all():
             page.delete()  # Allow signals to be sent, and clear caches
+        self.assertEqual(WebShopPage.objects.published().count(), 0)
         self.assertRaises(PageTypeNotMounted, lambda: app_reverse('webshop_index'))
         self.assertRaises(PageTypeNotMounted, lambda: mixed_reverse('webshop_index'))
 

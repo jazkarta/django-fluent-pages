@@ -1,102 +1,46 @@
 # -*- coding: utf-8 -*-
-import datetime
-from south.db import db
-from south.v2 import SchemaMigration
-from django.db import models
+from __future__ import unicode_literals
+
+from django.db import models, migrations
 
 
-class Migration(SchemaMigration):
-    depends_on = (
-        ("fluent_pages", "0004_remove_sort_order"),
-    )
+class Migration(migrations.Migration):
 
-    def forwards(self, orm):
-        # Adding model 'RedirectNode'
-        db.create_table('pagetype_redirectnode_redirectnode', (
-            ('urlnode_ptr', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['fluent_pages.UrlNode'], unique=True, primary_key=True)),
-            ('new_url', self.gf('fluent_pages.pagetypes.redirectnode.fields.UrlField')(max_length=300)),
-            ('redirect_type', self.gf('django.db.models.fields.IntegerField')(default=302)),
-        ))
-        db.send_create_signal('redirectnode', ['RedirectNode'])
+    dependencies = [
+        ('fluent_pages', '0001_initial'),
+    ]
 
-    def backwards(self, orm):
-        # Deleting model 'RedirectNode'
-        db.delete_table('pagetype_redirectnode_redirectnode')
-
-    models = {
-        'auth.group': {
-            'Meta': {'object_name': 'Group'},
-            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'name': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '80'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['auth.Permission']", 'symmetrical': 'False', 'blank': 'True'})
-        },
-        'auth.permission': {
-            'Meta': {'ordering': "('content_type__app_label', 'content_type__model', 'codename')", 'unique_together': "(('content_type', 'codename'),)", 'object_name': 'Permission'},
-            'codename': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
-            'content_type': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['contenttypes.ContentType']"}),
-            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'name': ('django.db.models.fields.CharField', [], {'max_length': '50'})
-        },
-        'auth.user': {
-            'Meta': {'object_name': 'User'},
-            'date_joined': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
-            'email': ('django.db.models.fields.EmailField', [], {'max_length': '75', 'blank': 'True'}),
-            'first_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
-            'groups': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['auth.Group']", 'symmetrical': 'False', 'blank': 'True'}),
-            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'is_active': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
-            'is_staff': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'is_superuser': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'last_login': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
-            'last_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
-            'password': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'user_permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['auth.Permission']", 'symmetrical': 'False', 'blank': 'True'}),
-            'username': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '30'})
-        },
-        'contenttypes.contenttype': {
-            'Meta': {'ordering': "('name',)", 'unique_together': "(('app_label', 'model'),)", 'object_name': 'ContentType', 'db_table': "'django_content_type'"},
-            'app_label': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
-            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'model': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
-            'name': ('django.db.models.fields.CharField', [], {'max_length': '100'})
-        },
-        'fluent_pages.page': {
-            'Meta': {'ordering': "('lft', 'title')", 'object_name': 'Page', 'db_table': "'fluent_pages_urlnode'", '_ormbases': ['fluent_pages.UrlNode'], 'proxy': 'True'}
-        },
-        'fluent_pages.urlnode': {
-            'Meta': {'ordering': "('lft', 'title')", 'object_name': 'UrlNode'},
-            '_cached_url': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '300', 'db_index': 'True', 'blank': 'True'}),
-            'author': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['auth.User']"}),
-            'creation_date': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'blank': 'True'}),
-            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'in_navigation': ('django.db.models.fields.BooleanField', [], {'default': 'True', 'db_index': 'True'}),
-            'level': ('django.db.models.fields.PositiveIntegerField', [], {'db_index': 'True'}),
-            'lft': ('django.db.models.fields.PositiveIntegerField', [], {'db_index': 'True'}),
-            'modification_date': ('django.db.models.fields.DateTimeField', [], {'auto_now': 'True', 'blank': 'True'}),
-            'override_url': ('django.db.models.fields.CharField', [], {'max_length': '300', 'blank': 'True'}),
-            'parent': ('mptt.fields.TreeForeignKey', [], {'blank': 'True', 'related_name': "'children'", 'null': 'True', 'to': "orm['fluent_pages.UrlNode']"}),
-            'parent_site': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['sites.Site']"}),
-            'polymorphic_ctype': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'polymorphic_fluent_pages.urlnode_set'", 'null': 'True', 'to': "orm['contenttypes.ContentType']"}),
-            'publication_date': ('django.db.models.fields.DateTimeField', [], {'db_index': 'True', 'null': 'True', 'blank': 'True'}),
-            'publication_end_date': ('django.db.models.fields.DateTimeField', [], {'db_index': 'True', 'null': 'True', 'blank': 'True'}),
-            'rght': ('django.db.models.fields.PositiveIntegerField', [], {'db_index': 'True'}),
-            'slug': ('django.db.models.fields.SlugField', [], {'max_length': '50'}),
-            'status': ('django.db.models.fields.CharField', [], {'default': "'d'", 'max_length': '1', 'db_index': 'True'}),
-            'title': ('django.db.models.fields.CharField', [], {'max_length': '255'}),
-            'tree_id': ('django.db.models.fields.PositiveIntegerField', [], {'db_index': 'True'})
-        },
-        'redirectnode.redirectnode': {
-            'Meta': {'ordering': "('lft', 'title')", 'object_name': 'RedirectNode', 'db_table': "'pagetype_redirectnode_redirectnode'", '_ormbases': ['fluent_pages.Page']},
-            'new_url': ('fluent_pages.pagetypes.redirectnode.fields.UrlField', [], {'max_length': '300'}),
-            'redirect_type': ('django.db.models.fields.IntegerField', [], {'default': '302'}),
-            'urlnode_ptr': ('django.db.models.fields.related.OneToOneField', [], {'to': "orm['fluent_pages.UrlNode']", 'unique': 'True', 'primary_key': 'True'})
-        },
-        'sites.site': {
-            'Meta': {'ordering': "('domain',)", 'object_name': 'Site', 'db_table': "'django_site'"},
-            'domain': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
-            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'name': ('django.db.models.fields.CharField', [], {'max_length': '50'})
-        }
-    }
-
-    complete_apps = ['redirectnode']
+    operations = [
+        migrations.CreateModel(
+            name='RedirectNode',
+            fields=[
+                ('urlnode_ptr', models.OneToOneField(parent_link=True, auto_created=True, primary_key=True, serialize=False, to='fluent_pages.UrlNode')),
+            ],
+            options={
+                'db_table': 'pagetype_redirectnode_redirectnode',
+                'verbose_name': 'Redirect',
+                'verbose_name_plural': 'Redirects',
+            },
+            bases=('fluent_pages.page',),
+        ),
+        migrations.CreateModel(
+            name='RedirectNodeTranslation',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('language_code', models.CharField(db_index=True, max_length=15, verbose_name='Language', choices=[(b'af', b'Afrikaans'), (b'ar', b'Arabic'), (b'ast', b'Asturian'), (b'az', b'Azerbaijani'), (b'bg', b'Bulgarian'), (b'be', b'Belarusian'), (b'bn', b'Bengali'), (b'br', b'Breton'), (b'bs', b'Bosnian'), (b'ca', b'Catalan'), (b'cs', b'Czech'), (b'cy', b'Welsh'), (b'da', b'Danish'), (b'de', b'German'), (b'el', b'Greek'), (b'en', b'English'), (b'en-au', b'Australian English'), (b'en-gb', b'British English'), (b'eo', b'Esperanto'), (b'es', b'Spanish'), (b'es-ar', b'Argentinian Spanish'), (b'es-mx', b'Mexican Spanish'), (b'es-ni', b'Nicaraguan Spanish'), (b'es-ve', b'Venezuelan Spanish'), (b'et', b'Estonian'), (b'eu', b'Basque'), (b'fa', b'Persian'), (b'fi', b'Finnish'), (b'fr', b'French'), (b'fy', b'Frisian'), (b'ga', b'Irish'), (b'gl', b'Galician'), (b'he', b'Hebrew'), (b'hi', b'Hindi'), (b'hr', b'Croatian'), (b'hu', b'Hungarian'), (b'ia', b'Interlingua'), (b'id', b'Indonesian'), (b'io', b'Ido'), (b'is', b'Icelandic'), (b'it', b'Italian'), (b'ja', b'Japanese'), (b'ka', b'Georgian'), (b'kk', b'Kazakh'), (b'km', b'Khmer'), (b'kn', b'Kannada'), (b'ko', b'Korean'), (b'lb', b'Luxembourgish'), (b'lt', b'Lithuanian'), (b'lv', b'Latvian'), (b'mk', b'Macedonian'), (b'ml', b'Malayalam'), (b'mn', b'Mongolian'), (b'mr', b'Marathi'), (b'my', b'Burmese'), (b'nb', b'Norwegian Bokmal'), (b'ne', b'Nepali'), (b'nl', b'Dutch'), (b'nn', b'Norwegian Nynorsk'), (b'os', b'Ossetic'), (b'pa', b'Punjabi'), (b'pl', b'Polish'), (b'pt', b'Portuguese'), (b'pt-br', b'Brazilian Portuguese'), (b'ro', b'Romanian'), (b'ru', b'Russian'), (b'sk', b'Slovak'), (b'sl', b'Slovenian'), (b'sq', b'Albanian'), (b'sr', b'Serbian'), (b'sr-latn', b'Serbian Latin'), (b'sv', b'Swedish'), (b'sw', b'Swahili'), (b'ta', b'Tamil'), (b'te', b'Telugu'), (b'th', b'Thai'), (b'tr', b'Turkish'), (b'tt', b'Tatar'), (b'udm', b'Udmurt'), (b'uk', b'Ukrainian'), (b'ur', b'Urdu'), (b'vi', b'Vietnamese'), (b'zh-cn', b'Simplified Chinese'), (b'zh-hans', b'Simplified Chinese'), (b'zh-hant', b'Traditional Chinese'), (b'zh-tw', b'Traditional Chinese')])),
+                ('new_url', models.URLField(max_length=300, verbose_name='New URL')),
+                ('redirect_type', models.IntegerField(default=302, help_text="Use 'normal redirect' unless you want to transfer SEO ranking to the new page.", verbose_name='Redirect type', choices=[(302, 'Normal redirect'), (301, 'Permanent redirect (for SEO ranking)')])),
+                ('master', models.ForeignKey(related_name='redirect_translations', editable=False, to='redirectnode.RedirectNode', null=True)),
+            ],
+            options={
+                'db_table': 'redirectnode_redirectnode_translation',
+                'verbose_name': 'Redirect Translation',
+                'default_permissions': (),
+            },
+            bases=(models.Model,),
+        ),
+        migrations.AlterUniqueTogether(
+            name='redirectnodetranslation',
+            unique_together=set([('language_code', 'master')]),
+        ),
+    ]

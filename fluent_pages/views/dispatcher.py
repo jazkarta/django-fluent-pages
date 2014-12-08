@@ -3,14 +3,20 @@ The view to display CMS content.
 """
 import re
 
+from future.builtins import str
 from django.conf import settings
+from django.contrib.sites.models import Site
 from django.core.urlresolvers import Resolver404, reverse, resolve, NoReverseMatch
-from django.http import Http404, HttpResponseRedirect
+from django.http import Http404, HttpResponseRedirect, HttpResponsePermanentRedirect
+from django.template.response import TemplateResponse
+from django.utils import translation
 from django.views.generic.base import View
 from django.views.generic import RedirectView
 
 from fluent_pages.appsettings import AUTHZ_BACKEND as backend
+from fluent_pages import appsettings
 from fluent_pages.models import UrlNode
+from fluent_pages.models.utils import prefill_parent_site
 
 
 # NOTE:
@@ -23,45 +29,50 @@ class GetPathMixin(View):
         """
         Return the path argument of the view.
         """
-        if self.kwargs.has_key('path'):
+        if 'path' in self.kwargs:
             # Starting slash is removed by URLconf, restore it.
             return '/' + (self.kwargs['path'] or '')
         else:
             # Path from current script prefix
             return self.request.path_info
 
+    def get_language(self):
+        """
+        Return the language to display in this view.
+        """
+        return translation.get_language()  # Assumes that middleware has set this properly.
 
 
 class CmsPageDispatcher(GetPathMixin, View):
     """
     The view which displays a CMS page.
     This is not a ``DetailsView`` by design, as the rendering is redirected to the page type plugin.
+
+    Regular pages are rendered using :func:`fluent_pages.extensions.PageTypePlugin.get_response`.
     """
     model = UrlNode
+    prefetch_translations = appsettings.FLUENT_PAGES_PREFETCH_TRANSLATIONS
 
 
     def get(self, request, **kwargs):
         """
         Display the page in a GET request.
         """
+        self.language_code = self.get_language()
         self.path = self.get_path()
 
         # See which view returns a valid response.
-        for func in (self._get_node, self._get_urlnode_redirect, self._get_appnode, self._get_append_slash_redirect):
+        for func in (
+            self._try_node,
+            self._try_node_redirect,
+            self._try_appnode,
+            self._try_append_slash_redirect
+        ):
             response = func()
-            if response:
+            if response is not None:
                 return response
 
-        # Since this view acts as a catch-all, give better error messages
-        # when mistyping an admin URL. Don't mention anything about CMS pages in /admin.
-        try:
-            if self.path.startswith(reverse('admin:index', prefix='/')):
-                raise Http404(u"No admin page found at '{0}'\n(raised by fluent_pages catch-all).".format(self.path))
-        except NoReverseMatch:
-            # Admin might not be loaded.
-            pass
-
-        raise Http404(u"No published '{0}' found for the path '{1}'".format(self.model.__name__, self.path))
+        return self._page_not_found()
 
 
     def post(self, request, **kwargs):
@@ -71,13 +82,50 @@ class CmsPageDispatcher(GetPathMixin, View):
         return self.get(request, **kwargs)
 
 
+    def _page_not_found(self):
+        # Since this view acts as a catch-all, give better error messages
+        # when mistyping an admin URL. Don't mention anything about CMS pages in /admin.
+        try:
+            if self.path.startswith(reverse('admin:index', prefix='/')):
+                raise Http404(u"No admin page found at '{0}'\n(raised by fluent_pages catch-all).".format(self.path))
+        except NoReverseMatch:
+            # Admin might not be loaded.
+            pass
+
+        if settings.DEBUG and self.model.objects.published().count() == 0 and self.path == '/':
+            # No pages in the database, present nice homepage.
+            return self._intro_page()
+        else:
+            fallback = _get_fallback_language(self.language_code)
+            if fallback:
+                languages = (self.language_code, fallback)
+                tried_msg = u" (language '{0}', fallback: '{1}')".format(*languages)
+            else:
+                tried_msg = u", language '{0}'".format(self.language_code)
+
+            if self.path == '/':
+                raise Http404(u"No published '{0}' found for the path '{1}'{2}. Use the 'Override URL' field to make sure a page can be found at the root of the site.".format(self.model.__name__, self.path, tried_msg))
+            else:
+                raise Http404(u"No published '{0}' found for the path '{1}'{2}.".format(self.model.__name__, self.path, tried_msg))
+
+
+    def _intro_page(self):
+        return TemplateResponse(self.request, "fluent_pages/intro_page.html", {
+            'request': self.request,
+            'site': Site.objects.get_current(),
+        })
+
+
     def get_queryset(self):
         """
         Return the QuerySet used to find the pages.
         """
         # This can be limited or expanded in the future
         user = self.request.user
-        return self.model.objects.filter(pk__in=backend.pages_for_user(user))
+        qs = self.model.objects.published().filter(pk__in=backend.pages_for_user(user))
+        if self.prefetch_translations:
+            qs = qs.prefetch_related('translations')
+        return qs
 
 
     def get_object(self, path=None):
@@ -85,15 +133,24 @@ class CmsPageDispatcher(GetPathMixin, View):
         Return the UrlNode subclass object of the current page.
         """
         path = path or self.get_path()
-        return self.get_queryset().get_for_path(path)
+        qs = self.get_queryset()
+
+        return _try_languages(self.language_code, UrlNode.DoesNotExist,
+            lambda lang: qs.get_for_path(path, language_code=lang)
+        )
 
 
     def get_best_match_object(self, path=None):
         """
         Return the nearest UrlNode object for an URL path.
         """
+        # Only check for nodes with custom urlpatterns
         path = path or self.get_path()
-        return self.get_queryset().best_match_for_path(path)
+        qs = self.get_queryset().url_pattern_types()
+
+        return _try_languages(self.language_code, UrlNode.DoesNotExist,
+            lambda lang: qs.best_match_for_path(path, language_code=lang)
+        )
 
 
     def get_plugin(self):
@@ -105,13 +162,11 @@ class CmsPageDispatcher(GetPathMixin, View):
 
     # -- Various resolver functions
 
-    def _get_node(self):
+    def _try_node(self):
         try:
             self.object = self.get_object()
         except self.model.DoesNotExist:
             return None
-
-        self.request._current_fluent_page = self.object   # Avoid additional lookup in templatetags
 
         # Before returning the response of an object,
         # check if the plugin overwrites the root url with a custom view.
@@ -123,7 +178,26 @@ class CmsPageDispatcher(GetPathMixin, View):
             except Resolver404:
                 pass
             else:
-                return self._call_url_view(match)
+                return self._call_url_view(plugin, '/', match)
+
+        return self._call_node_view(plugin)
+
+
+    def _call_node_view(self, plugin):
+        """
+        Call the regular view.
+        """
+        # Check that there wasn't a fetch in the fallback language,
+        # perform some service for the user if this is the case.
+        if _is_accidental_fallback(self.object, self.language_code):
+            self.object.set_current_language(self.language_code)
+            return HttpResponsePermanentRedirect(self.object.default_url)
+
+        # Store the current page. This is used in the `app_reverse()` code,
+        # and also avoids additional lookup in templatetags.
+        # NOTE: django-fluent-blogs actually reads this variable too (should use CurrentPageMixin now)
+        self.request._current_fluent_page = self.object
+        prefill_parent_site(self.object)
 
         # Let page type plugin handle the request.
         response = plugin.get_response(self.request, self.object)
@@ -134,7 +208,7 @@ class CmsPageDispatcher(GetPathMixin, View):
         return response
 
 
-    def _get_urlnode_redirect(self):
+    def _try_node_redirect(self):
         # Check if the URLnode would be returned if the path did end with a slash.
         if self.path.endswith('/') or not settings.APPEND_SLASH:
             return None
@@ -147,19 +221,23 @@ class CmsPageDispatcher(GetPathMixin, View):
             return HttpResponseRedirect(self.request.path + '/')
 
 
-    def _get_appnode(self):
+    def _try_appnode(self):
         try:
             self.object = self.get_best_match_object()
         except self.model.DoesNotExist:
             return None
 
         # See if the application can resolve URLs
-        resolver = self.get_plugin().get_url_resolver()
+        plugin = self.get_plugin()
+        resolver = plugin.get_url_resolver()
         if not resolver:
             return None
 
-        urlnode_path = self.object._cached_url.rstrip('/')
-        sub_path = self.request.path_info[len(urlnode_path):]  # path_info starts at script_prefix
+        # Strip the full CMS url from the path_info,
+        # so the remainder can be passed to the URL resolver of the app.
+        # Using default_url instead of get_absolute_url() to avoid ABSOLUTE_URL_OVERRIDES issues (e.g. adding a hostname)
+        urlnode_path = self.object.default_url.rstrip('/')
+        sub_path = self.request.path[len(urlnode_path):]  # path_info starts at script_prefix, path starts at root.
 
         try:
             match = resolver.resolve(sub_path)
@@ -176,19 +254,32 @@ class CmsPageDispatcher(GetPathMixin, View):
             return None
         else:
             # Call application view.
-            self.request._current_fluent_page = self.object   # Avoid additional lookup in templatetags
-            return self._call_url_view(match)
+            return self._call_url_view(plugin, sub_path, match)
 
 
-    def _call_url_view(self, match):
-        response = match.func(self.request, *match.args, **match.kwargs)
+    def _call_url_view(self, plugin, sub_path, match):
+        """
+        Call the extra URLpattern view.
+        """
+        # Check that there wasn't a fetch in the fallback language,
+        # perform some service for the user if this is the case.
+        if _is_accidental_fallback(self.object, self.language_code):
+            self.object.set_current_language(self.language_code)
+            return HttpResponsePermanentRedirect(self.object.default_url.rstrip('/') + sub_path)
+
+        # Avoid additional lookup in templatetags
+        self.request._current_fluent_page = self.object
+        prefill_parent_site(self.object)
+
+        # Get view response
+        response = plugin.get_view_response(self.request, self.object, match.func, match.args, match.kwargs)
         if response is None:
             raise RuntimeError("The view '{0}' didn't return an HttpResponse object.".format(match.url_name))
 
         return response
 
 
-    def _get_append_slash_redirect(self):
+    def _try_append_slash_redirect(self):
         if self.path.endswith('/') or not settings.APPEND_SLASH:
             return None
 
@@ -213,22 +304,75 @@ class CmsPageDispatcher(GetPathMixin, View):
 
     def _is_own_view(self, match):
         return match.app_name == 'fluent_pages' \
-            or match.url_name == 'fluent-page'
+            or match.url_name in ('fluent-page', 'fluent-page-url')
 
 
 class CmsPageAdminRedirect(GetPathMixin, RedirectView):
     """
     A view which redirects to the admin.
     """
+    permanent = False
+
     def get_redirect_url(self, **kwargs):
         # Avoid importing the admin too early via the URLconf.
         # This gives errors when 'fluent_pages' is not in INSTALLED_APPS yet.
-        from fluent_pages.admin.utils import get_page_admin_url
+        from fluent_pages.adminui.utils import get_page_admin_url
 
         path = self.get_path()
+        language_code = self.get_language()
+        qs = UrlNode.objects.non_polymorphic().published()
+
         try:
-            page = UrlNode.objects.non_polymorphic().get_for_path(path)
-            return get_page_admin_url(page)
+            page = _try_languages(language_code, UrlNode.DoesNotExist,
+                lambda lang: qs.get_for_path(path, language_code=lang)
+            )
+            url = get_page_admin_url(page)
         except UrlNode.DoesNotExist:
             # Back to page without @admin, display the error there.
-            return '/' + re.sub('@[^@]+/?$', '', path)
+            url = re.sub('@[^@]+/?$', '', self.request.path)
+
+        return self.request.build_absolute_uri(url)
+
+
+def _try_languages(language_code, exception_class, func):
+    """
+    Try running the same code with different languages.
+    """
+    try:
+        return func(language_code)
+    except exception_class:
+        # see if there is a fallback language
+        fallback = _get_fallback_language(language_code)
+        if not fallback:
+            # There is not another possible attempt, raise.
+            raise
+
+    try:
+        obj = func(fallback)
+    except exception_class as e:
+        raise exception_class(u"{0}\nTried languages: {1}, {2}".format(str(e), language_code, fallback), e)
+
+    # NOTE: it could happen that objects are resolved using their fallback language,
+    # but the actual translation also exists. This is handled in _get_node() above.
+    setattr(obj, "_fetched_in_fallback_language", True)
+    return obj
+
+
+def _is_accidental_fallback(obj, requested_language):
+    # The object was resolved via the fallback language, but it has an official URL in the translated language.
+    # Either _try_languages() can raise an exception, or we could perform a redirect on the users behalf.
+    return getattr(obj, '_fetched_in_fallback_language', False) \
+       and obj.has_translation(requested_language)
+
+
+def _get_fallback_language(language_code):
+    """
+    Whether to try the default language.
+    """
+    # Re-use django-parler logic, which takes `hide_untranslated` into account.
+    # Choices = (language, fallback) or (language,)
+    choices = appsettings.FLUENT_PAGES_LANGUAGES.get_active_choices(language_code)
+    if len(choices) <= 1:
+        return None
+    else:
+        return choices[-1]

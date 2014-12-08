@@ -1,21 +1,46 @@
-from fluent_pages.admin import HtmlPageAdmin
+from django.conf.urls import url, patterns
+from fluent_pages.admin import HtmlPageAdmin, PageAdminForm
+from fluent_pages.integration.fluent_contents import FluentContentsPageAdmin
 from fluent_pages.models import PageLayout
-from fluent_pages.utils.ajax import JsonResponse
-from fluent_pages.utils.compat import url, patterns
-from fluent_contents.admin.placeholdereditor import PlaceholderEditorAdmin
 from fluent_contents.analyzer import get_template_placeholder_data
+from fluent_utils.ajax import JsonResponse
 from .widgets import LayoutSelector
 
 
+class FluentPageAdminForm(PageAdminForm):
+    """
+    The form for the :class:`FluentPageAdmin` code.
+    """
 
-class FluentPageAdmin(PlaceholderEditorAdmin, HtmlPageAdmin):
+    def __init__(self, *args, **kwargs):
+        super(FluentPageAdminForm, self).__init__(*args, **kwargs)
+        if 'layout' in self.fields:
+            self.fields['layout'].queryset = self.get_layout_queryset(self.fields['layout'].queryset)
+
+    def get_layout_queryset(self, base_qs):
+        """
+        Allow to limit the layout choices
+        """
+        return base_qs
+
+
+class FluentPageAdmin(FluentContentsPageAdmin):
     """
     This admin is a small binding between the pagetypes of *django-fluent-pages*
-    and page contents of *django-fluent-contents*. In fact, most code only concerns with the layout
-    mechanism that is custom for each implementation. To build a variation of this page,
-    see the API documentation of `Creating a CMS system <http://django-fluent-contents.readthedocs.org/en/latest/cms.html>`_
+    and page contents of *django-fluent-contents*.
+
+    .. note::
+
+        To create custom page types that combine boths apps,
+        consider using :class:`fluent_pages.integration.fluent_contents.admin.FluentContentsPageAdmin` instead.
+        In fact, the code in this class concerns with the layout mechanism that is specific for this implementation.
+
+    To build a variation of this page, see the API documentation
+    of `Creating a CMS system <http://django-fluent-contents.readthedocs.org/en/latest/cms.html>`_
     in the *django-fluent-contents* documentation to implement the required API's.
     """
+    base_form = FluentPageAdminForm
+    readonly_shared_fields = HtmlPageAdmin.readonly_shared_fields + ('layout',)
 
     # By using base_fieldsets, the parent PageAdmin will
     # add an extra fieldset for all derived fields automatically.
@@ -30,9 +55,10 @@ class FluentPageAdmin(PlaceholderEditorAdmin, HtmlPageAdmin):
         HtmlPageAdmin.FIELDSET_PUBLICATION,
     )
 
-    change_form_template = ["admin/fluent_pages/page/page_editor.html",
-                            "admin/fluent_pages/page.html",
-                            ]
+    #change_form_template = [
+    #  "admin/fluentpage/change_form.html",
+    #  FluentContentsPageAdmin.base_change_form_template
+    # ]
 
     class Media:
         js = ('fluent_pages/fluentpage/fluent_layouts.js',)
@@ -41,7 +67,7 @@ class FluentPageAdmin(PlaceholderEditorAdmin, HtmlPageAdmin):
     # ---- fluent-contents integration ----
 
 
-    def get_placeholder_data(self, request, obj):
+    def get_placeholder_data(self, request, obj=None):
         """
         Provides a list of :class:`fluent_contents.models.PlaceholderData` classes,
         that describe the contents of the template.
@@ -110,3 +136,25 @@ class FluentPageAdmin(PlaceholderEditorAdmin, HtmlPageAdmin):
             }
 
         return JsonResponse(json, status=status)
+
+
+    # ---- Layout permission hooks ----
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super(FluentPageAdmin, self).get_readonly_fields(request, obj)
+
+        if obj is not None \
+        and not 'layout' in fields \
+        and not self.has_change_page_layout_permission(request, obj):
+            # Disable on edit page only.
+            # Add page is allowed, need to be able to choose initial layout
+            fields = fields + ('layout',)
+        return fields
+
+
+    def has_change_page_layout_permission(self, request, obj=None):
+        """
+        Whether the user can change the page layout.
+        """
+        codename = '{0}.change_page_layout'.format(obj._meta.app_label)
+        return request.user.has_perm(codename, obj=obj)

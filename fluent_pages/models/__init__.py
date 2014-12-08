@@ -14,9 +14,10 @@ There are several sub packages:
 # have everything split into several packages
 from django.conf import settings
 from fluent_pages.forms.fields import PageChoiceField
-from fluent_pages.models.db import UrlNode, Page, HtmlPage, PageLayout
+import fluent_pages.models.db
+from .db import UrlNode, UrlNode_Translation, Page, HtmlPage, PageLayout
 
-__all__ = ['UrlNode', 'Page', 'HtmlPage', 'PageLayout']
+__all__ = ['UrlNode', 'UrlNode_Translation', 'Page', 'HtmlPage', 'PageLayout']
 
 
 def _register_cmsfield_url_type():
@@ -25,9 +26,17 @@ def _register_cmsfield_url_type():
     except ImportError:
         pass
     else:
+        import any_urlfield
         from django import forms
+        from distutils.version import StrictVersion
         from any_urlfield.forms.widgets import SimpleRawIdWidget
-        AnyUrlField.register_model(Page, form_field=PageChoiceField(widget=SimpleRawIdWidget(Page)))
+
+        if StrictVersion(any_urlfield.__version__) >= StrictVersion('2.0a1'):
+            # Allow lambda parameter for late evaluation.
+            AnyUrlField.register_model(Page, form_field=lambda: PageChoiceField(widget=SimpleRawIdWidget(Page)))
+        else:
+            # This will run a query at import time!
+            AnyUrlField.register_model(Page, form_field=PageChoiceField(widget=SimpleRawIdWidget(Page)))
 
 
 if 'any_urlfield' in settings.INSTALLED_APPS:

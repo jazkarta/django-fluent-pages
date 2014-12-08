@@ -1,4 +1,4 @@
-# Django settings for example project.
+import django
 from os.path import join, dirname, realpath
 
 # Add parent path,
@@ -91,6 +91,7 @@ INSTALLED_APPS = (
     'fluent_pages.pagetypes.fluentpage',
     'fluent_pages.pagetypes.redirectnode',
     'fluent_pages.pagetypes.textfile',
+    'fluent_pages.pagetypes.flatpage',
     'theme1',
 
     # Extra apps
@@ -100,6 +101,7 @@ INSTALLED_APPS = (
     'mptt',
     'polymorphic',
     'polymorphic_tree',
+    'parler',
 
     # Content for fluentpage, with plugins that have no extra configuration requirements
     'fluent_contents',
@@ -110,28 +112,17 @@ INSTALLED_APPS = (
     'fluent_contents.plugins.markup',
     'fluent_contents.plugins.rawhtml',
     'fluent_contents.plugins.text',
-
-    # Other apps
     'django_wysiwyg',
+    'tinymce',
 )
 
-DJANGO_WYSIWYG_FLAVOR = 'yui_advanced'
+if django.VERSION < (1,7):
+    INSTALLED_APPS += (
+        # For DB upgrades
+        'south',
+    )
+else:
+    TEST_RUNNER = 'django.test.runner.DiscoverRunner'  # silence system checks
 
-
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'mail_admins': {
-            'level': 'ERROR',
-            'class': 'django.utils.log.AdminEmailHandler'
-        }
-    },
-    'loggers': {
-        'django.request': {
-            'handlers': ['mail_admins'],
-            'level': 'ERROR',
-            'propagate': True,
-        },
-    }
-}
+#DJANGO_WYSIWYG_FLAVOR = 'yui_advanced'
+DJANGO_WYSIWYG_FLAVOR = 'tinymce_advanced'

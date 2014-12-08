@@ -9,10 +9,14 @@ It offers properties such as :attr:`~fluent_pages.models.Page.parent`
 and :attr:`~fluent_pages.models.Page.children` (a :class:`~django.db.models.RelatedManager`),
 and methods such as `get_parent()` and `get_children()` through the `MPTTModel` base class.
 """
+
 from fluent_pages.appsettings import AUTHZ_BACKEND as backend
+from future.builtins import object
+from django.utils.encoding import python_2_unicode_compatible
+from parler.models import TranslationDoesNotExist
 
 
-
+@python_2_unicode_compatible
 class NavigationNode(object):
     """
     The base class for all navigation nodes, whether model-based on virtually inserted ones.
@@ -26,7 +30,7 @@ class NavigationNode(object):
         raise NotImplementedError("Missing property in NavigationNode!")
 
     def __dir__(self):
-        return ['slug', 'title', 'url', 'is_active', 'level', 'parent', 'children', 'has_children']
+        return ['slug', 'title', 'url', 'is_active', 'level', 'parent', 'children', 'has_children', 'page']
 
     # All properties the template can request:
     slug = property(_not_implemented, doc='The slug of the node.')
@@ -37,6 +41,7 @@ class NavigationNode(object):
     parent = property(_not_implemented, doc='The parent node.')
     children = property(_not_implemented, doc='The list of children.')
     has_children = property(_not_implemented, doc='Whether the node has children.')
+    page = None
 
     # TODO: active trail item
 
@@ -52,8 +57,22 @@ class NavigationNode(object):
         """Provided for compatibility with mptt recursetree"""
         return self.level
 
+    # Needed since django-mptt 0.6:
+    _mptt_meta = property(_not_implemented)
+
     def __repr__(self):
-        return '<{0}: {1}>'.format(self.__class__.__name__, self.url)
+        try:
+            url = self.url
+        except TranslationDoesNotExist:
+            url = None
+        return '<{0}: {1}>'.format(self.__class__.__name__, url)
+
+    def __str__(self):
+        # This only exists in case a developer uses `{{ node }}` in the template.
+        try:
+            return self.title
+        except TranslationDoesNotExist:
+            return ''
 
 
 class PageNavigationNode(NavigationNode):
@@ -70,7 +89,7 @@ class PageNavigationNode(NavigationNode):
         self._page = page
         self._current_page = current_page
         self._parent_node = parent_node
-        self._children = []
+        self._children = None
         self._max_depth = max_depth
         self._user = user
 
@@ -95,25 +114,52 @@ class PageNavigationNode(NavigationNode):
             self._parent_node = PageNavigationNode(self._page.get_parent(), max_depth=self._max_depth, current_page=self._current_page)
         return self._parent_node
 
+    @parent.setter
+    def parent(self, new_parent):
+        # Happens when django-mptt finds an object with a different level in the recursetree() / cache_tree_children() code.
+        raise AttributeError("can't set attribute 'parent' of '{0}' object.".format(self.__class__.__name__))
+
     @property
     def children(self):
         self._read_children()
-        for child in self._children:
-            yield PageNavigationNode(child, parent_node=self, max_depth=self._max_depth, current_page=self._current_page)
+        if self._children is not None:
+            for child in self._children:
+                if child.pk == self._page.pk:
+                    # This happened with the get_query_set() / get_queryset() transition for Django 1.7, affecting Django 1.4/1.5
+                    raise RuntimeError("Page #{0} children contained self!".format(self._page.pk))
+
+                yield PageNavigationNode(child, parent_node=self, max_depth=self._max_depth, current_page=self._current_page)
 
     @property
     def has_children(self):
-        self._read_children()
-        return self._children.count() > 0
+        # This avoids queries, just checks that rght = lft + 1
+        return not self._page.is_leaf_node()
 
     def _read_children(self):
-        if not self._children and (self._page.get_level() + 1) < self._max_depth:  # level 0 = toplevel.
-            #children = self._page.get_children()  # Via MPTT
-            children = self._page.children.in_navigation()
-            children = children._mark_current(self._current_page)
-            if self._user is not None:
-                children = children.filter(pk__in=backend.pages_for_user(self._user))
-            self._children = children
+        if self._children is None and not self._page.is_leaf_node():
+            if (self._page.get_level() + 1) < self._max_depth:  # level 0 = toplevel.
+                #children = self._page.get_children()  # Via MPTT
+                self._children = self._page.children.in_navigation()._mark_current(self._current_page)  # Via RelatedManager
 
-    def get_page(self):
+            if self._user is not None:
+                self._children = self._children.filter(pk__in=backend.pages_for_user(self._user))
+
+                # If the parent wasn't polymorphic, neither will it's children be.
+                if self._page.get_real_instance_class() is not self._page.__class__:
+                    self._children = self._children.non_polymorphic()
+
+                self._children = list(self._children)
+
+
+    @property
+    def _mptt_meta(self):
+        # Needed since django-mptt 0.6.
+        # Need to reconsider this design, for now this patch will suffice.
+        return self._page._mptt_meta
+
+    @property
+    def page(self):
+        """
+        .. versionadded:: 0.9 Provide access to the underlying page object, if it exists.
+        """
         return self._page
