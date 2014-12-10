@@ -79,6 +79,7 @@ class Migration(migrations.Migration):
                 ('creation_date', models.DateTimeField(auto_now_add=True, verbose_name='creation date')),
                 ('modification_date', models.DateTimeField(auto_now=True, verbose_name='last modification')),
                 ('author', models.ForeignKey(editable=False, to=settings.AUTH_USER_MODEL, verbose_name='author')),
+                ('icon', models.CharField(blank=True, max_length=32, null=True, verbose_name='icon', choices=[(b'home', b'Home'), (b'file', b'File'), (b'list', b'List'), (b'calendar', b'Calendar')]))
                 ('parent', fluent_pages.models.fields.PageTreeForeignKey(related_name='children', blank=True, to='fluent_pages.UrlNode', help_text='You can also change the parent by dragging the page in the list.', null=True, verbose_name='parent')),
                 ('parent_site', models.ForeignKey(default=fluent_pages.models.db._get_current_site, editable=False, to='sites.Site')),
                 ('polymorphic_ctype', models.ForeignKey(related_name='polymorphic_fluent_pages.urlnode_set', editable=False, to='contenttypes.ContentType', null=True)),
