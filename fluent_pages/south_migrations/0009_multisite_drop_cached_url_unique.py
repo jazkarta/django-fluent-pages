@@ -9,13 +9,15 @@ from fluent_utils.django_compat import AUTH_USER_MODEL
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
+        pass
         # Removing unique constraint on 'UrlNode_Translation', fields ['_cached_url', 'language_code']
-        db.delete_unique(u'fluent_pages_urlnode_translation', ['_cached_url', 'language_code'])
+        # db.delete_unique(u'fluent_pages_urlnode_translation', ['_cached_url', 'language_code'])
 
 
     def backwards(self, orm):
+        pass
         # Adding unique constraint on 'UrlNode_Translation', fields ['_cached_url', 'language_code']
-        db.create_unique(u'fluent_pages_urlnode_translation', ['_cached_url', 'language_code'])
+        # db.create_unique(u'fluent_pages_urlnode_translation', ['_cached_url', 'language_code'])
 
     models = {
         u'auth.group': {
@@ -81,7 +83,7 @@ class Migration(SchemaMigration):
         },
         'fluent_pages.urlnode_translation': {
             'Meta': {'unique_together': "(('language_code', 'master'),)", 'object_name': 'UrlNode_Translation'},
-            '_cached_url': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '300', 'db_index': 'True', 'blank': 'True'}),
+            '_cached_url': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '300', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'language_code': ('django.db.models.fields.CharField', [], {'max_length': '15', 'db_index': 'True'}),
             'master': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'translations'", 'null': 'True', 'to': "orm['fluent_pages.UrlNode']"}),

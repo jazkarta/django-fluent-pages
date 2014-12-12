@@ -17,7 +17,7 @@ class Migration(SchemaMigration):
             ('title', self.gf('django.db.models.fields.CharField')(max_length=255)),
             ('slug', self.gf('django.db.models.fields.SlugField')(max_length=50)),
             ('override_url', self.gf('django.db.models.fields.CharField')(max_length=300, blank=True)),
-            ('_cached_url', self.gf('django.db.models.fields.CharField')(default='', max_length=300, db_index=True, blank=True)),
+            ('_cached_url', self.gf('django.db.models.fields.CharField')(default='', max_length=300, blank=True)),
             ('language_code', self.gf('django.db.models.fields.CharField')(max_length=15, db_index=True)),
             ('master', self.gf('django.db.models.fields.related.ForeignKey')(related_name='translations', null=True, to=orm['fluent_pages.UrlNode'])),
         ))
@@ -95,7 +95,7 @@ class Migration(SchemaMigration):
         },
         'fluent_pages.urlnode_translation': {
             'Meta': {'object_name': 'UrlNode_Translation'},
-            '_cached_url': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '300', 'db_index': 'True', 'blank': 'True'}),
+            '_cached_url': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '300', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'language_code': ('django.db.models.fields.CharField', [], {'max_length': '15', 'db_index': 'True'}),
             'master': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'translations'", 'null': 'True', 'to': "orm['fluent_pages.UrlNode']"}),
