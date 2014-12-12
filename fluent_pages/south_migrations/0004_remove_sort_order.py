@@ -10,12 +10,18 @@ class Migration(SchemaMigration):
     def forwards(self, orm):
         # Deleting field 'UrlNode.sort_order'
         db.delete_column('fluent_pages_urlnode', 'sort_order')
+        # Adding field 'UrlNode.icon' (from Jazkarta)
+        db.add_column('fluent_pages_urlnode', 'icon',
+                      self.gf('django.db.models.fields.CharField')(max_length=32, null=True, blank=True),
+                      keep_default=False)
 
     def backwards(self, orm):
         # Adding field 'UrlNode.sort_order'
         db.add_column('fluent_pages_urlnode', 'sort_order',
                       self.gf('django.db.models.fields.IntegerField')(default=1),
                       keep_default=False)
+        # Deleting field 'UrlNode.icon' (from Jazkarta)
+        db.delete_column('fluent_pages_urlnode', 'icon')
 
     models = {
         'auth.group': {
@@ -66,6 +72,7 @@ class Migration(SchemaMigration):
             '_cached_url': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '300', 'db_index': 'True', 'blank': 'True'}),
             'author': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm[AUTH_USER_MODEL]"}),
             'creation_date': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'blank': 'True'}),
+            'icon': ('django.db.models.fields.CharField', [], {'max_length': '32', 'null': 'True', 'blank': 'True'}),
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'in_navigation': ('django.db.models.fields.BooleanField', [], {'default': 'True', 'db_index': 'True'}),
             'level': ('django.db.models.fields.PositiveIntegerField', [], {'db_index': 'True'}),
